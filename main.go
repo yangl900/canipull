@@ -68,7 +68,7 @@ func main() {
 
 	if cfg.AADClientID == "msi" && cfg.AADClientSecret == "msi" {
 		logger.V(2).Info("Checking managed identity...")
-		validateMsiAuth()
+		os.Exit(validateMsiAuth(acr, cfg, logger))
 		return
 	}
 
@@ -76,8 +76,34 @@ func main() {
 	os.Exit(validateServicePrincipalAuth(acr, cfg, logger))
 }
 
-func validateMsiAuth() {
+func validateMsiAuth(acr string, cfg azure.Config, logger *log.Logger) int {
+	env, err := az.EnvironmentFromName(cfg.Cloud)
+	if err != nil {
+		logger.V(2).Info("Unknown Azure cloud name: %s", cfg.Cloud)
+		return exitcode.AzureCloudUnknown
+	}
 
+	tr := authorizer.NewTokenRetriever(env.ActiveDirectoryEndpoint)
+	token, err := tr.AcquireARMToken(cfg.AADClientID)
+	if err != nil {
+		logger.V(2).Info("Validating managed identity existance: FAILED")
+		logger.V(2).Info("Getting managed identity token failed with: %s", err)
+		return exitcode.ServicePrincipalCredentialInvalid
+	}
+	logger.V(2).Info("Validating managed identity existance: SUCCEEDED")
+	logger.V(6).Info("ARM access token: %s", token)
+
+	te := authorizer.NewTokenExchanger()
+	acrToken, err := te.ExchangeACRAccessToken(token, acr)
+	if err != nil {
+		logger.V(2).Info("Validating image pull permission: FAILED")
+		logger.V(2).Info("ACR %s rejected token exchange: %s", acr, err)
+		return exitcode.MissingImagePullPermision
+	}
+
+	logger.V(2).Info("Validating image pull permission: SUCCEEDED")
+	logger.V(6).Info("ACR access token: %s", acrToken)
+	return 0
 }
 
 func validateServicePrincipalAuth(acr string, cfg azure.Config, logger *log.Logger) int {
