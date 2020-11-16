@@ -3,7 +3,10 @@ package log
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
+
+	"github.com/fatih/color"
 )
 
 type Logger struct {
@@ -49,5 +52,13 @@ func (l *Logger) V(level uint) *LogWriter {
 }
 
 func info(format string, a ...interface{}) {
-	fmt.Printf("[%s] %s\n", time.Now().UTC().Format(time.RFC3339), fmt.Sprintf(format, a...))
+	l := fmt.Sprintf("[%s] %s\n", time.Now().UTC().Format(time.RFC3339), fmt.Sprintf(format, a...))
+
+	failed := color.RedString("FAILED")
+	succeeded := color.GreenString("SUCCEEDED")
+
+	l = strings.ReplaceAll(l, "SUCCEEDED", succeeded)
+	l = strings.ReplaceAll(l, "FAILED", failed)
+
+	fmt.Print(l)
 }
