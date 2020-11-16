@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: canipull
+spec:
+  restartPolicy: Never
+  hostNetwork: true
+  containers:
+  - name: canipull
+    image: ko://github.com/yangl900/canipull
+    args:
+      - "-v9"
+      - "yangl900.azurecr.io"
+    resources:
+      limits:
+        memory: "100Mi"
+        cpu: "50m"
+    volumeMounts:
+      - mountPath: /etc/kubernetes
+        name: azurejson
+      - mountPath: /etc/ssl/certs
+        name: sslcerts
+    securityContext:
+      runAsUser: 0
+  volumes:
+    - name: azurejson
+      hostPath:
+          path: /etc/kubernetes
+    - name: sslcerts
+      hostPath:
+          path: /etc/ssl/certs

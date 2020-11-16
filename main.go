@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -27,21 +28,23 @@ var (
 )
 
 func main() {
-	if len(os.Args) < 2 {
+	flag.Parse()
+
+	if len(flag.Args()) != 1 {
 		fmt.Println("No ACR input. Expect `canipull myacr.azurecr.io`.")
 		return
 	}
 
-	flag.Parse()
-	logger := log.NewLogger(*logLevel)
+	ctx := log.WithLogLevel(context.Background(), *logLevel)
+	acr := flag.Args()[0]
+	logger := log.FromContext(ctx)
 
-	acr := os.Args[1]
 	if _, err := net.LookupHost(acr); err != nil {
-		logger.V(2).Info("Checking host name resolution: FAILED")
+		logger.V(2).Info("Checking host name resolution (%s): FAILED", acr)
 		logger.V(2).Info("Failed to resolve specified fqdn %s: %s \n", acr, err)
 		os.Exit(exitcode.DNSResolutionFailure)
 	}
-	logger.V(2).Info("Checking host name resolution: SUCCEEDED")
+	logger.V(2).Info("Checking host name resolution (%s): SUCCEEDED", acr)
 
 	azConfigPath := *configPath
 	if *configPath == "" {
@@ -68,30 +71,33 @@ func main() {
 
 	if cfg.AADClientID == "msi" && cfg.AADClientSecret == "msi" {
 		logger.V(2).Info("Checking managed identity...")
-		os.Exit(validateMsiAuth(acr, cfg, logger))
+		os.Exit(validateMsiAuth(ctx, acr, cfg, logger))
 		return
 	}
 
 	logger.V(4).Info("The cluster uses service principal.")
-	os.Exit(validateServicePrincipalAuth(acr, cfg, logger))
+	os.Exit(validateServicePrincipalAuth(ctx, acr, cfg, logger))
 }
 
-func validateMsiAuth(acr string, cfg azure.Config, logger *log.Logger) int {
+func validateMsiAuth(ctx context.Context, acr string, cfg azure.Config, logger *log.Logger) int {
+	logger.V(6).Info("Cluster cloud name: %s", cfg.Cloud)
+
 	env, err := az.EnvironmentFromName(cfg.Cloud)
 	if err != nil {
 		logger.V(2).Info("Unknown Azure cloud name: %s", cfg.Cloud)
 		return exitcode.AzureCloudUnknown
 	}
 
+	logger.V(2).Info("Kubelet managed identity client ID: %s", cfg.UserAssignedIdentityID)
 	tr := authorizer.NewTokenRetriever(env.ActiveDirectoryEndpoint)
-	token, err := tr.AcquireARMToken(cfg.AADClientID)
+	token, err := tr.AcquireARMTokenMSI(ctx, cfg.UserAssignedIdentityID)
 	if err != nil {
 		logger.V(2).Info("Validating managed identity existance: FAILED")
 		logger.V(2).Info("Getting managed identity token failed with: %s", err)
 		return exitcode.ServicePrincipalCredentialInvalid
 	}
 	logger.V(2).Info("Validating managed identity existance: SUCCEEDED")
-	logger.V(6).Info("ARM access token: %s", token)
+	logger.V(9).Info("ARM access token: %s", token)
 
 	te := authorizer.NewTokenExchanger()
 	acrToken, err := te.ExchangeACRAccessToken(token, acr)
@@ -102,11 +108,12 @@ func validateMsiAuth(acr string, cfg azure.Config, logger *log.Logger) int {
 	}
 
 	logger.V(2).Info("Validating image pull permission: SUCCEEDED")
-	logger.V(6).Info("ACR access token: %s", acrToken)
+	logger.V(9).Info("ACR access token: %s", acrToken)
+	logger.V(2).Info("\nYour cluster can pull images from %s!", acr)
 	return 0
 }
 
-func validateServicePrincipalAuth(acr string, cfg azure.Config, logger *log.Logger) int {
+func validateServicePrincipalAuth(ctx context.Context, acr string, cfg azure.Config, logger *log.Logger) int {
 	env, err := az.EnvironmentFromName(cfg.Cloud)
 	if err != nil {
 		logger.V(2).Info("Unknown Azure cloud name: %s", cfg.Cloud)
@@ -114,14 +121,14 @@ func validateServicePrincipalAuth(acr string, cfg azure.Config, logger *log.Logg
 	}
 
 	tr := authorizer.NewTokenRetriever(env.ActiveDirectoryEndpoint)
-	token, err := tr.AcquireARMTokenSP(cfg.AADClientID, cfg.AADClientSecret, cfg.TenantID)
+	token, err := tr.AcquireARMTokenSP(ctx, cfg.AADClientID, cfg.AADClientSecret, cfg.TenantID)
 	if err != nil {
 		logger.V(2).Info("Validating service principal credential: FAILED")
 		logger.V(2).Info("Sign in to AAD failed with: %s", err)
 		return exitcode.ServicePrincipalCredentialInvalid
 	}
 	logger.V(2).Info("Validating service principal credential: SUCCEEDED")
-	logger.V(6).Info("ARM access token: %s", token)
+	logger.V(9).Info("ARM access token: %s", token)
 
 	te := authorizer.NewTokenExchanger()
 	acrToken, err := te.ExchangeACRAccessToken(token, acr)
@@ -132,6 +139,7 @@ func validateServicePrincipalAuth(acr string, cfg azure.Config, logger *log.Logg
 	}
 
 	logger.V(2).Info("Validating image pull permission: SUCCEEDED")
-	logger.V(6).Info("ACR access token: %s", acrToken)
+	logger.V(9).Info("ACR access token: %s", acrToken)
+	logger.V(2).Info("\nYour cluster can pull images from %s!", acr)
 	return 0
 }

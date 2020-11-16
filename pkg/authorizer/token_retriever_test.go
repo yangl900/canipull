@@ -1,6 +1,7 @@
 package authorizer
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -37,7 +38,7 @@ var _ = Describe("Token Retriever Tests", func() {
 				))
 
 			tr := newTestTokenRetriever(server.URL())
-			token, err := tr.AcquireARMToken(testClientID)
+			token, err := tr.AcquireARMTokenMSI(context.Background(), testClientID)
 
 			Expect(err).To(BeNil())
 			Expect(server.ReceivedRequests()).Should(HaveLen(1))
@@ -52,7 +53,7 @@ var _ = Describe("Token Retriever Tests", func() {
 				))
 
 			tr := newTestTokenRetriever(server.URL())
-			token, err := tr.AcquireARMToken(testClientID)
+			token, err := tr.AcquireARMTokenMSI(context.Background(), testClientID)
 
 			Expect(err).NotTo(BeNil())
 			Expect(err.Error()).To(ContainSubstring("404"))

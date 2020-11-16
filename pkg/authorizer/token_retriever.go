@@ -1,11 +1,14 @@
 package authorizer
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+
+	"github.com/yangl900/canipull/pkg/log"
 
 	"github.com/Azure/go-autorest/autorest/adal"
 
@@ -31,9 +34,9 @@ func NewTokenRetriever(activeDirectoryEndpoint string) *TokenRetriever {
 	}
 }
 
-// AcquireARMToken acquires the managed identity ARM access token
-func (tr *TokenRetriever) AcquireARMToken(clientID string) (types.AccessToken, error) {
-	token, err := tr.refreshToken(clientID, "")
+// AcquireARMTokenMSI acquires the managed identity ARM access token
+func (tr *TokenRetriever) AcquireARMTokenMSI(ctx context.Context, clientID string) (types.AccessToken, error) {
+	token, err := tr.refreshToken(ctx, clientID, "")
 	if err != nil {
 		return "", fmt.Errorf("failed to refresh ARM access token: %w", err)
 	}
@@ -42,7 +45,7 @@ func (tr *TokenRetriever) AcquireARMToken(clientID string) (types.AccessToken, e
 }
 
 // AcquireARMTokenSP acquires the service principal ARM access token
-func (tr *TokenRetriever) AcquireARMTokenSP(clientID, clientSecret, tenantID string) (types.AccessToken, error) {
+func (tr *TokenRetriever) AcquireARMTokenSP(ctx context.Context, clientID, clientSecret, tenantID string) (types.AccessToken, error) {
 	oauthConfig, err := adal.NewOAuthConfig(tr.activeDirectoryEndpoint, tenantID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get OAuth config: %w", err)
@@ -61,7 +64,9 @@ func (tr *TokenRetriever) AcquireARMTokenSP(clientID, clientSecret, tenantID str
 	return types.AccessToken(spt.OAuthToken()), nil
 }
 
-func (tr *TokenRetriever) refreshToken(clientID, resourceID string) (types.AccessToken, error) {
+func (tr *TokenRetriever) refreshToken(ctx context.Context, clientID, resourceID string) (types.AccessToken, error) {
+	logger := log.FromContext(ctx)
+
 	msiEndpoint, err := url.Parse(tr.metadataEndpoint)
 	if err != nil {
 		return "", err
@@ -78,6 +83,8 @@ func (tr *TokenRetriever) refreshToken(clientID, resourceID string) (types.Acces
 	parameters.Add("api-version", "2018-02-01")
 
 	msiEndpoint.RawQuery = parameters.Encode()
+
+	logger.V(9).Info("GET %s", msiEndpoint.String())
 
 	req, err := http.NewRequest("GET", msiEndpoint.String(), nil)
 	if err != nil {
