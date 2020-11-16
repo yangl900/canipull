@@ -15,3 +15,6 @@ Following command will perform the authorization check as well as other best pra
 ```bash
 kubectl check-acr foobar.azurecr.io
 ```
+
+## Demo
+[![asciicast](https://asciinema.org/a/373337.svg)](https://asciinema.org/a/373337)
