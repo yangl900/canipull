@@ -7,8 +7,10 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"strings"
 
 	"github.com/yangl900/canipull/pkg/authorizer"
+	"github.com/yangl900/canipull/pkg/utils"
 
 	az "github.com/Azure/go-autorest/autorest/azure"
 	"github.com/yangl900/canipull/pkg/exitcode"
@@ -41,10 +43,22 @@ func main() {
 
 	if _, err := net.LookupHost(acr); err != nil {
 		logger.V(2).Info("Checking host name resolution (%s): FAILED", acr)
-		logger.V(2).Info("Failed to resolve specified fqdn %s: %s \n", acr, err)
+		logger.V(2).Info("Failed to resolve specified fqdn %s: %s", acr, err)
 		os.Exit(exitcode.DNSResolutionFailure)
 	}
 	logger.V(2).Info("Checking host name resolution (%s): SUCCEEDED", acr)
+
+	cname, err := net.LookupCNAME(acr)
+	if err != nil {
+		logger.V(2).Info("Checking CNAME (%s): FAILED", acr)
+		logger.V(2).Info("Failed to get CNAME of the ACR: %s", err)
+		os.Exit(exitcode.DNSResolutionFailure)
+	}
+
+	logger.V(2).Info("Canonical name for ACR (%s): %s", acr, cname)
+
+	acrLocation := strings.Split(cname, ".")[1]
+	logger.V(2).Info("ACR location: %s", acrLocation)
 
 	azConfigPath := *configPath
 	if *configPath == "" {
@@ -67,6 +81,11 @@ func main() {
 	if err := json.Unmarshal(configBytes, &cfg); err != nil {
 		logger.V(2).Info("Failed to read azure.json file: %s", err)
 		os.Exit(exitcode.AzureConfigUnmarshalFailure)
+	}
+
+	if !utils.LocationEquals(acrLocation, cfg.Location) {
+		logger.V(2).Info("Checking ACR location matches cluster location: FAILED")
+		logger.V(2).Info("ACR location '%s' does not match your cluster location '%s'. This may result in slow image pulls and extra cost.", acrLocation, cfg.Location)
 	}
 
 	if cfg.AADClientID == "msi" && cfg.AADClientSecret == "msi" {
