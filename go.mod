@@ -3,8 +3,8 @@ module github.com/yangl900/canipull
 go 1.15
 
 require (
-	github.com/Azure/go-autorest/autorest v0.9.6
-	github.com/Azure/go-autorest/autorest/adal v0.8.2
+	github.com/Azure/go-autorest/autorest v0.11.21
+	github.com/Azure/go-autorest/autorest/adal v0.9.14
 	github.com/Azure/msi-acrpull v0.1.0-alpha
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/fatih/color v1.10.0
